@@ -2,24 +2,26 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"xuxinhao.com/pbsocket/api/subpub"
 	"xuxinhao.com/pbsocket/stream"
 )
 
-func reader(r io.Reader) {
-	buf := make([]byte, 1024)
-	for {
-		n, err := r.Read(buf[:])
-		if err != nil {
-			return
-		}
-		println("Client got:", string(buf[0:n]))
-	}
+func recvPack(c net.Conn, p proto.Message) {
+	fmt.Println(proto.CompactTextString(p))
+}
+
+func reader(c net.Conn) {
+	log.Printf("Accept conn %s: %p", c.RemoteAddr().String(), c)
+	defer func() {
+		log.Printf("Conn[%v] exit", c.RemoteAddr())
+	}()
+	myc := stream.NewConn(c, recvPack)
+	myc.RecvLoop()
 }
 
 func main() {
@@ -31,16 +33,15 @@ func main() {
 
 	go reader(c)
 	msg := &subpub.ClientMessage{Header: &subpub.Header{Id: uint64(time.Now().UnixNano())}}
-	pr := stream.ProtobufProtocol{}
+	pr := stream.Protocol{}
 	for {
 		msg.Header.Generation++
-		sm := stream.NewProtobufPacket(msg)
-		_, err := pr.PackTo(sm, c)
+		_, err := pr.PackTo(msg, c)
 		if err != nil {
 			log.Fatal("Write error:", err)
 			break
 		}
-		fmt.Println("Client sent:", sm.String())
+		fmt.Println("Client sent:", msg)
 		if msg.Header.Generation % 10 == 0 {
 			time.Sleep(time.Second)
 		}

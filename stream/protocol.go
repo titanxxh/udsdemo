@@ -4,17 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"reflect"
 
 	"github.com/golang/protobuf/proto"
 )
-
-// Packet is the unit of data.
-type Packet interface {
-	fmt.Stringer
-}
 
 var (
 	errUnknownProtobufMsgType = errors.New("Unknown protobuf message type")
@@ -22,61 +16,30 @@ var (
 	errInvalidPacket          = errors.New("invalid packet")
 )
 
-// ProtobufPacket size : msglen + msgNameLen + len(msgName) + len(msgData)
-type ProtobufPacket struct {
-	Msg proto.Message
+// Protocol type.
+type Protocol struct {
 }
 
-// NewProtobufPacket create new ProtobufPacket by proto.Message
-func NewProtobufPacket(msg proto.Message) *ProtobufPacket {
-	p := &ProtobufPacket{
-		Msg: msg,
-	}
-
-	return p
-}
-
-func (p *ProtobufPacket) String() string {
-	if p.Msg == nil {
-		return "<nil proto msg>"
-	}
-	return proto.CompactTextString(p.Msg)
-}
-
-// ProtobufProtocol type.
-type ProtobufProtocol struct {
-}
-
-// PackSize return size need for pack ProtobufPacket.
-func (pro ProtobufProtocol) PackSize(p Packet) int {
-	pp := p.(*ProtobufPacket)
-	if pp == nil {
-		return 0
-	}
-
-	msgName := proto.MessageName(pp.Msg)
+// PackSize return size need for pack Protobufproto.Message.
+func (pro Protocol) PackSize(p proto.Message) int {
+	msgName := proto.MessageName(p)
 	msgNameLen := len(msgName)
 	if msgNameLen == 0 {
 		return 0
 	}
-	return 4 + 4 + msgNameLen + proto.Size(pp.Msg)
+	return 4 + 4 + msgNameLen + proto.Size(p)
 }
 
 // PackTo :
-func (pro ProtobufProtocol) PackTo(p Packet, w io.Writer) (int, error) {
-	pp := p.(*ProtobufPacket)
-	if pp == nil {
-		return 0, errUnknownProtobufMsgType
-	}
-
-	msgName := proto.MessageName(pp.Msg)
+func (pro Protocol) PackTo(pp proto.Message, w io.Writer) (int, error) {
+	msgName := proto.MessageName(pp)
 	msgNameLen := len(msgName)
 	if msgNameLen == 0 {
 		return 0, errUnknownProtobufMsgType
 	}
-	msgLen := 4 + 4 + msgNameLen + proto.Size(pp.Msg)
+	msgLen := 4 + 4 + msgNameLen + proto.Size(pp)
 
-	data, err := proto.Marshal(pp.Msg)
+	data, err := proto.Marshal(pp)
 	if err != nil {
 		return 0, err
 	}
@@ -106,7 +69,7 @@ func (pro ProtobufProtocol) PackTo(p Packet, w io.Writer) (int, error) {
 }
 
 // Pack :
-func (pro ProtobufProtocol) Pack(p Packet) ([]byte, error) {
+func (pro Protocol) Pack(p proto.Message) ([]byte, error) {
 	len := pro.PackSize(p)
 	if len != 0 {
 		buf := bytes.NewBuffer(nil)
@@ -117,7 +80,7 @@ func (pro ProtobufProtocol) Pack(p Packet) ([]byte, error) {
 }
 
 // Unpack :
-func (pro ProtobufProtocol) Unpack(buf []byte) (Packet, int, error) {
+func (pro Protocol) Unpack(buf []byte) (proto.Message, int, error) {
 	if len(buf) < 4 {
 		return nil, 0, nil
 	}
@@ -142,7 +105,5 @@ func (pro ProtobufProtocol) Unpack(buf []byte) (Packet, int, error) {
 	if err != nil {
 		return nil, msgLen, err
 	}
-
-	p := NewProtobufPacket(msg)
-	return p, msgLen, nil
+	return msg, msgLen, nil
 }
