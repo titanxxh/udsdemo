@@ -11,16 +11,16 @@ import (
 )
 
 var (
-	errUnknownProtobufMsgType = errors.New("Unknown protobuf message type")
+	errUnknownProtobufMsgType = errors.New("unknown protobuf message type")
 	errBufSizeNotEnoughToPack = errors.New("buf size not enough")
 	errInvalidPacket          = errors.New("invalid packet")
 )
 
-// Protocol type.
+// Protocol is a simple protobuf protocol
 type Protocol struct {
 }
 
-// PackSize return size need for pack Protobufproto.Message.
+// PackSize return size need for pack Protobuf proto.Message.
 func (pro Protocol) PackSize(p proto.Message) int {
 	msgName := proto.MessageName(p)
 	msgNameLen := len(msgName)

@@ -15,47 +15,35 @@ import (
 
 var pr = stream.Protocol{}
 
-func ackPack(c net.Conn, p proto.Message) {
-	fmt.Println(proto.CompactTextString(p))
+func ackPack(c *stream.Conn, p proto.Message) {
 	x := p.(*subpub.ClientMessage)
 	y := &subpub.ServerMessage{Header: x.GetHeader()}
-	_, err := pr.PackTo(y, c)
+	_, err := c.Send(y)
 	if err != nil {
 		log.Printf("Server resp error: %v", err)
 	}
-}
-
-func echoServer(c net.Conn) {
-	log.Printf("Accept conn %s: %p", c.RemoteAddr().String(), c)
-	defer func() {
-		log.Printf("Conn[%v] exit", c.RemoteAddr())
-	}()
-	myc := stream.NewConn(c, ackPack)
-	myc.RecvLoop()
+	fmt.Println("Server send:", y)
 }
 
 func main() {
+	os.RemoveAll("/tmp/go.sock")
 	log.Println("Starting echo server")
 	ln, err := net.Listen("unix", "/tmp/go.sock")
 	if err != nil {
 		log.Fatal("Listen error: ", err)
 	}
+	server := stream.NewServer(ackPack)
 
+	done := make(chan struct{})
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func(ln net.Listener, c chan os.Signal) {
 		sig := <-c
 		log.Printf("Caught signal %s: shutting down.", sig)
 		ln.Close()
-		os.Exit(0)
+		server.GracefulStop()
+		done <- struct{}{}
 	}(ln, sigc)
-
-	for {
-		fd, err := ln.Accept()
-		if err != nil {
-			log.Fatal("Accept error: ", err)
-		}
-
-		go echoServer(fd)
-	}
+	go server.Serve(ln)
+	<-done
 }

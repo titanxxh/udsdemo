@@ -2,72 +2,101 @@ package stream
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
-	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/golang/protobuf/proto"
 )
 
+var (
+	pr                  = Protocol{}
+	errSendToClosedConn = fmt.Errorf("send to closed conn")
+)
+
+// OnPackReceived can use c to send reply message
+type OnPackReceived func(c *Conn, p proto.Message)
+
+const (
+	normal = iota
+	stopped
+)
+
+// RecvBufSize ...
 const RecvBufSize = 1024
 
-type OnRecvPack func(c net.Conn, p proto.Message) 
-
-// Conn ...
+// Conn wraps raw net.Conn
+// We inject a OnPackReceived func to handle callback.
 type Conn struct {
-	c net.Conn
-	handler OnRecvPack
+	c       net.Conn
+	handler OnPackReceived
+	state   int32
+	stop    sync.Once
+	l       sync.Mutex
 }
 
-func (c Conn) RecvLoop() {
-	var tempDelay time.Duration
-	maxDelay := 1 * time.Second
+func (c *Conn) isStopped() bool {
+	return atomic.LoadInt32(&c.state) == stopped
+}
+
+func (c *Conn) isRunning() bool {
+	return atomic.LoadInt32(&c.state) == normal
+}
+
+// Stop stops the conn.
+func (c *Conn) Stop() {
+	c.stop.Do(func() {
+		atomic.StoreInt32(&c.state, stopped)
+		c.c.Close()
+	})
+}
+
+// Send send a pack.
+func (c *Conn) Send(msg proto.Message) (int, error) {
+	if !c.isRunning() {
+		return 0, errSendToClosedConn
+	}
+	c.l.Lock()
+	n, err := pr.PackTo(msg, c.c)
+	c.l.Unlock()
+	return n, err
+}
+
+// RecvLoop will run until the connection is stopped or read an error.
+func (c *Conn) RecvLoop() {
+	defer func() {
+		log.Printf("Conn[%v] exit recv", c.c.RemoteAddr())
+	}()
 	tempBuf := make([]byte, RecvBufSize)
 	recvBuf := bytes.NewBuffer(make([]byte, 0, RecvBufSize))
-	pr := Protocol{}
 	for {
 		n, err := c.c.Read(tempBuf)
 		if err != nil {
-			// unix domain will produce a net error?
-			if nerr, ok := err.(net.Error); ok {
-				if nerr.Timeout() {
-					// timeout
-				} else if nerr.Temporary() {
-					if tempDelay == 0 {
-						tempDelay = 5 * time.Millisecond
-					} else {
-						tempDelay *= 2
-					}
-					if tempDelay > maxDelay {
-						tempDelay = maxDelay
-					}
-					log.Printf("Conn[%v] recv error: %v; retrying in %v", c.c.RemoteAddr(), err, tempDelay)
-					time.Sleep(tempDelay)
-					continue
+			if c.isRunning() {
+				if err != io.EOF {
+					log.Printf("Conn[%v] recv error cause stop: %v", c.c.RemoteAddr(), err)
+				} else {
+					log.Printf("Conn[%v] recv io eof", c.c.RemoteAddr())
 				}
-			}
-			if err != io.EOF {
-				log.Printf("Conn[%v] recv error: %v", c.c.RemoteAddr(), err)
-			} else {
-				c.c.Close()
+				c.Stop()
 			}
 			return
 		}
 
 		recvBuf.Write(tempBuf[:n])
-		tempDelay = 0
-
 		for recvBuf.Len() > 0 {
-			p, pl, err := pr.Unpack(recvBuf.Bytes())
+			msg, upl, err := pr.Unpack(recvBuf.Bytes())
 			if err != nil {
-				log.Printf("Conn[%v] OnUnpackErr: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
+				log.Printf("Conn[%v] unpack error: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
 			}
-			if pl > 0 {
-				_ = recvBuf.Next(pl)
+			if upl > 0 {
+				_ = recvBuf.Next(upl)
 			}
-			if p != nil {
-				c.handler(c.c, p)
+			if msg != nil {
+				c.handler(c, msg)
 			} else {
 				break
 			}
@@ -75,6 +104,7 @@ func (c Conn) RecvLoop() {
 	}
 }
 
-func NewConn(c net.Conn, cb OnRecvPack) Conn {
-	return Conn{c: c, handler: cb}
+// NewConn ...
+func NewConn(c net.Conn, cb OnPackReceived) *Conn {
+	return &Conn{c: c, handler: cb}
 }
