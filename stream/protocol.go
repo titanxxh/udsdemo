@@ -5,6 +5,16 @@ import (
 	"io"
 )
 
+// EventHandler ...
+type EventHandler interface {
+	// OnConnAccepted means connection is accepted.
+	OnConnAccepted(c *Conn)
+	// OnPackReceived can use c to send reply message.
+	OnPackReceived(c *Conn, pack Packet)
+	// OnConnClosed means connection is closed.
+	OnConnClosed(c *Conn)
+}
+
 // OnPackReceived can use c to send reply message
 type OnPackReceived func(c *Conn, pack Packet)
 

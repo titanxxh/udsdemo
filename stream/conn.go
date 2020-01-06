@@ -8,8 +8,6 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
-
-	"github.com/golang/protobuf/proto"
 )
 
 var (
@@ -52,7 +50,7 @@ func (c *Conn) Stop() {
 }
 
 // Send send a pack.
-func (c *Conn) Send(msg proto.Message) (int, error) {
+func (c *Conn) Send(msg Packet) (int, error) {
 	if !c.isRunning() {
 		return 0, errSendToClosedConn
 	}
