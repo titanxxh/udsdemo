@@ -11,8 +11,8 @@ import (
 	"xuxinhao.com/pbsocket/stream"
 )
 
-func recvPack(c *stream.Conn, p proto.Message) {
-	fmt.Println("Client recv:", proto.CompactTextString(p))
+func recvPack(c *stream.Conn, p stream.Packet) {
+	fmt.Println("Client recv:", proto.CompactTextString(p.(*subpub.ServerMessage)))
 }
 
 func sendLoop(myc *stream.Conn, gracefulStop <-chan struct{}) {
@@ -44,7 +44,7 @@ func main() {
 	}
 	defer c.Close()
 
-	myc := stream.NewConn(c, recvPack)
+	myc := stream.NewConn(c, recvPack, stream.Protobuf{})
 	go myc.RecvLoop()
 	gracefulStop := make(chan struct{})
 	go sendLoop(myc, gracefulStop)

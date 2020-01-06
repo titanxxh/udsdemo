@@ -28,6 +28,12 @@ message Header {
     int32 to = 4;
 }
 
+message UniMessage {
+    Header header = 1;
+    int32 payload_type = 2;
+    bytes payload = 3;
+}
+
 message ClientMessage {
     Header header = 1;
     int32 payload_type = 2;

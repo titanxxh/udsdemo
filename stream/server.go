@@ -15,10 +15,11 @@ type Server struct {
 	stop  sync.Once
 	state int32
 	cb    OnPackReceived
+	pr    Protocol
 }
 
 func (s *Server) handleConn(conn net.Conn) {
-	myc := NewConn(conn, s.cb)
+	myc := NewConn(conn, s.cb, s.pr)
 	log.Printf("accept conn: %p", myc)
 	s.l.Lock()
 	s.conns[myc] = struct{}{}
@@ -71,9 +72,10 @@ func (s *Server) GracefulStop() {
 	})
 }
 
-func NewServer(cb OnPackReceived) *Server {
+func NewServer(cb OnPackReceived, pr Protocol) *Server {
 	return &Server{
 		conns: make(map[*Conn]struct{}),
 		cb:    cb,
+		pr:    pr,
 	}
 }

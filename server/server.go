@@ -8,14 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/golang/protobuf/proto"
 	"xuxinhao.com/pbsocket/api/subpub"
 	"xuxinhao.com/pbsocket/stream"
 )
 
-var pr = stream.Protocol{}
-
-func ackPack(c *stream.Conn, p proto.Message) {
+func ackPack(c *stream.Conn, p stream.Packet) {
 	x := p.(*subpub.ClientMessage)
 	y := &subpub.ServerMessage{Header: x.GetHeader()}
 	_, err := c.Send(y)
@@ -32,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Listen error: ", err)
 	}
-	server := stream.NewServer(ackPack)
+	server := stream.NewServer(ackPack, stream.Protobuf{})
 
 	done := make(chan struct{})
 	sigc := make(chan os.Signal, 1)

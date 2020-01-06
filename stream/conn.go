@@ -13,12 +13,8 @@ import (
 )
 
 var (
-	pr                  = Protocol{}
 	errSendToClosedConn = fmt.Errorf("send to closed conn")
 )
-
-// OnPackReceived can use c to send reply message
-type OnPackReceived func(c *Conn, p proto.Message)
 
 const (
 	normal = iota
@@ -36,6 +32,7 @@ type Conn struct {
 	state   int32
 	stop    sync.Once
 	l       sync.Mutex
+	pr      Protocol
 }
 
 func (c *Conn) isStopped() bool {
@@ -60,7 +57,7 @@ func (c *Conn) Send(msg proto.Message) (int, error) {
 		return 0, errSendToClosedConn
 	}
 	c.l.Lock()
-	n, err := pr.PackTo(msg, c.c)
+	n, err := c.pr.PackInto(msg, c.c)
 	c.l.Unlock()
 	return n, err
 }
@@ -88,7 +85,7 @@ func (c *Conn) RecvLoop() {
 
 		recvBuf.Write(tempBuf[:n])
 		for recvBuf.Len() > 0 {
-			msg, upl, err := pr.Unpack(recvBuf.Bytes())
+			msg, upl, err := c.pr.Unpack(recvBuf.Bytes())
 			if err != nil {
 				log.Printf("Conn[%v] unpack error: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
 			}
@@ -105,6 +102,6 @@ func (c *Conn) RecvLoop() {
 }
 
 // NewConn ...
-func NewConn(c net.Conn, cb OnPackReceived) *Conn {
-	return &Conn{c: c, handler: cb}
+func NewConn(c net.Conn, cb OnPackReceived, pr Protocol) *Conn {
+	return &Conn{c: c, handler: cb, pr: pr}
 }
