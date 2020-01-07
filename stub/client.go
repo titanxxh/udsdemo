@@ -45,8 +45,10 @@ type Client struct {
 func (r *Client) GetCurrentStat() stream.Statistics {
 	r.mu.RLock()
 	t := r.stat
+	if r.conn != nil {
+		t = stream.AddStat(t, r.conn.GetCurrentStat())
+	}
 	r.mu.RUnlock()
-	t = stream.AddStat(t, r.conn.GetCurrentStat())
 	return t
 }
 

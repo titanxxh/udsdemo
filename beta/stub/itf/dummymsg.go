@@ -1,6 +1,10 @@
 package itf
 
-import "xuxinhao.com/pbsocket/stub"
+import (
+	"encoding/binary"
+
+	"xuxinhao.com/pbsocket/stub"
+)
 
 func constructBuf(n int) []byte {
 	x := make([]byte, n)
@@ -16,6 +20,10 @@ var (
 	Msg4K  = stub.Message{From: TestAgentIden, To: TestAgentIden, PayloadType: TestNormalReqType, Payload: constructBuf(4 * 1024)}
 	Msg1M  = stub.Message{From: TestAgentIden, To: TestAgentIden, PayloadType: TestNormalReqType, Payload: constructBuf(1024 * 1024)}
 )
+
+func ModSeq(message *stub.Message, seq uint64) {
+	binary.LittleEndian.PutUint64(message.Payload, seq)
+}
 
 const (
 	TestAgentIden = 1

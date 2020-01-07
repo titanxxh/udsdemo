@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"math/rand"
 	"net"
 	"os"
@@ -16,9 +17,16 @@ import (
 
 type haf struct {
 	c *stub.Server
+	// haf field
+	clientSeq [100]uint64
 }
 
 func (h *haf) OnPayloadRecv(remote stub.PeerID, msg stub.Message) {
+	seq := binary.LittleEndian.Uint64(msg.Payload[:8])
+	if seq != h.clientSeq[remote]+1 {
+		mlog.L.Errorf("server seq check failed, client %v before %d now %d", remote, h.clientSeq[remote], seq)
+	}
+	h.clientSeq[remote] = seq
 	h.c.Response(remote, msg)
 }
 

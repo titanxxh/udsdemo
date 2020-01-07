@@ -100,7 +100,9 @@ func (c *Conn) RecvLoop() {
 		for recvBuf.Len() > 0 {
 			msg, upl, err := c.pr.Unpack(recvBuf.Bytes())
 			if err != nil {
-				mlog.L.Debugf("Conn[%v] unpack error: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
+				mlog.L.Errorf("Conn[%v] unpack error: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
+				c.stat.PacketRecvErr++
+				// todo if err count too much, abort this conn?
 			}
 			if upl > 0 {
 				_ = recvBuf.Next(upl)
@@ -110,7 +112,6 @@ func (c *Conn) RecvLoop() {
 				c.handler(c, msg)
 				c.stat.PacketRecv++
 			} else {
-				c.stat.PacketRecvErr++
 				break
 			}
 		}

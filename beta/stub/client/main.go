@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -18,9 +19,16 @@ import (
 
 type haf struct {
 	c *stub.Client
+	// haf field
+	serverSeq uint64
 }
 
 func (h *haf) OnPayloadRecv(remote stub.PeerID, msg stub.Message) {
+	seq := binary.LittleEndian.Uint64(msg.Payload[:8])
+	if seq != h.serverSeq+1 {
+		mlog.L.Errorf("client seq check failed, before %d now %d", h.serverSeq, seq)
+	}
+	h.serverSeq = seq
 }
 
 func (h *haf) OnPeerReconnect(id stub.PeerID) {
@@ -45,8 +53,11 @@ func main() {
 	mlog.L.Infof("ready")
 	go func() {
 		prev, pStat := time.Now(), client.GetCurrentStat()
+		seq := uint64(1)
 		for {
 			for i := int64(0); i < perSec; i++ {
+				seq++
+				itf.ModSeq(&itf.Msg256, seq)
 				client.Request(itf.Msg256)
 			}
 			time.Sleep(time.Second)
