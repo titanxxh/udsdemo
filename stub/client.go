@@ -100,7 +100,7 @@ func (r *Client) internal(peer peerInfo, t int32, buf []byte) {
 			mlog.L.Debugf("Client %v-%v change to connected", r.self, r.selfGene)
 			r.mu.RLock()
 			for _, cb := range r.cbs {
-				cb.OnPeerReconnect(peer.id, peer.gene)
+				cb.OnPeerReconnect(peer.id)
 			}
 			r.mu.RUnlock()
 		}
@@ -130,6 +130,7 @@ func (r *Client) recv(c *stream.Conn, pack stream.Packet) {
 	cb.OnPayloadRecv(m.Header.Id, Message{From: m.Header.From, To: m.Header.To, Payload: m.Payload, PayloadType: m.PayloadType})
 }
 
+// dest is the identity for the destination component
 func (r *Client) Request(m Message) error {
 	if atomic.LoadInt32(&r.state) != connected {
 		return errConn

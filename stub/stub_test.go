@@ -42,7 +42,7 @@ func (s *serverCb) OnPayloadRecv(remote PeerID, msg Message) {
 	mlog.L.Info("server reply result: ", err)
 }
 
-func (s *serverCb) OnPeerReconnect(id PeerID, gene Gene) {
+func (s *serverCb) OnPeerReconnect(id PeerID) {
 }
 
 type clientCb struct {
@@ -53,7 +53,7 @@ func (c *clientCb) OnPayloadRecv(remote PeerID, msg Message) {
 	mlog.L.Infof("client recv %+v", msg)
 }
 
-func (c *clientCb) OnPeerReconnect(id PeerID, gene Gene) {
+func (c *clientCb) OnPeerReconnect(id PeerID) {
 	err := c.req.Request(subReq)
 	mlog.L.Info("client resub result: ", err)
 }

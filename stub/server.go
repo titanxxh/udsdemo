@@ -15,10 +15,14 @@ var (
 )
 
 type (
-	PeerID   = uint64
-	Gene     = int32
+	// todo maybe we must use another unique process id rather than a uint64.
+	PeerID = uint64
+	// a random number when process is started.
+	Gene = int32
+	// an identity for a component
 	Identity = int32
 	Message  struct {
+		// identity for a component
 		From, To    int32
 		PayloadType int32
 		Payload     []byte
@@ -33,9 +37,8 @@ type (
 		// to server side, this handler is called when:
 		// the client process is reconnected (id not changed but generation changed), usually do nothing.
 		// to client side, this handler is called when:
-		// the connection just setup or re-setup, usually re-subscribe all the subscriptions from server.
-		// todo rmv gene
-		OnPeerReconnect(id PeerID, gene Gene)
+		// the connection just setup or re-setup, usually re-subscribe all the subscriptions of server.
+		OnPeerReconnect(id PeerID)
 	}
 	peerInfo struct {
 		id   PeerID
@@ -67,8 +70,13 @@ func (s *Server) hello(peer peerInfo) {
 	s.mu.Lock()
 	old, ok := s.peers[peer.id]
 	if ok {
-		if old == peer {
-			// a duplicated hello usually means the hello ack failed
+		if old.gene == peer.gene {
+			if old.c != peer.c {
+				// if true, raw connection changed means network error?
+				old.c.Stop()
+				s.peers[peer.id] = peer
+			}
+			// if not, a duplicated hello usually means the hello ack failed
 			s.mu.Unlock()
 			peer.c.Send(ConstructHelloAck(s.self, s.selfGene))
 			return
@@ -76,7 +84,7 @@ func (s *Server) hello(peer peerInfo) {
 		old.c.Stop()
 		mlog.L.Debugf("Server: old client %v-%v stop", old.id, old.gene)
 		for _, cb := range s.cbs {
-			cb.OnPeerReconnect(peer.id, peer.gene)
+			cb.OnPeerReconnect(peer.id)
 		}
 	}
 	s.peers[peer.id] = peer
@@ -145,6 +153,7 @@ func (s *Server) Stop() {
 	s.s.GracefulStop()
 }
 
+// dest is the identity for the destination component
 func (s *Server) RegisterCallback(dest Identity, cb Handler) {
 	s.mu.Lock()
 	s.cbs[dest] = cb
