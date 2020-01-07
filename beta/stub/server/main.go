@@ -31,6 +31,7 @@ func (h *haf) OnPayloadRecv(remote stub.PeerID, msg stub.Message) {
 }
 
 func (h *haf) OnPeerReconnect(id stub.PeerID) {
+	mlog.L.Errorf("server checked a client reset, client %v", id)
 }
 
 func main() {
@@ -54,7 +55,7 @@ func main() {
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func(ln net.Listener, c chan os.Signal) {
 		sig := <-c
-		mlog.L.Info("Caught signal %s: shutting down.", sig)
+		mlog.L.Infof("Caught signal %s: shutting down.", sig)
 		ln.Close()
 		server.Stop()
 		done <- struct{}{}

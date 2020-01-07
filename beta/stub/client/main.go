@@ -65,7 +65,7 @@ func main() {
 			sec := curr.Sub(prev).Seconds()
 			delta := stream.SubStat(cStat, pStat)
 			if sec > 0 {
-				mlog.L.Infof("client stat: %+v", stream.StatPerSec(delta, sec))
+				mlog.L.Infof("client speed: %+v", stream.StatPerSec(delta, sec))
 			}
 			prev, pStat = curr, cStat
 		}
@@ -76,7 +76,7 @@ func main() {
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func(c chan os.Signal) {
 		sig := <-c
-		mlog.L.Info("Caught signal %s: shutting down.", sig)
+		mlog.L.Infof("Caught signal %s: shutting down.", sig)
 		mlog.L.Infof("client stat: %+v", client.GetCurrentStat())
 		done <- struct{}{}
 	}(sigc)

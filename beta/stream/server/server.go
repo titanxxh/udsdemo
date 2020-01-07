@@ -35,7 +35,7 @@ func main() {
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func(ln net.Listener, c chan os.Signal) {
 		sig := <-c
-		mlog.L.Info("Caught signal %s: shutting down.", sig)
+		mlog.L.Infof("Caught signal %s: shutting down.", sig)
 		ln.Close()
 		server.GracefulStop()
 		done <- struct{}{}

@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	errConn = fmt.Errorf("connection error, please retry later")
+	errConn = fmt.Errorf("connection lost, please retry later")
 
 	retryInterval = time.Second
 )
@@ -52,15 +52,17 @@ func (r *Client) GetCurrentStat() stream.Statistics {
 	return t
 }
 
-func (r *Client) retryDail(old connState, wait time.Duration) {
+func (r *Client) retryDial(old connState, wait time.Duration) {
 	sw := atomic.CompareAndSwapInt32(&r.state, old, dailFailed)
 	if sw {
 		if wait > 0 {
+			mlog.L.Infof("Client %v-%v retry dial later", r.self, r.selfGene)
 			time.AfterFunc(wait, func() {
 				atomic.StoreInt32(&r.state, notDailed)
 				r.tryDial()
 			})
 		} else {
+			mlog.L.Infof("Client %v-%v immediately retry dial", r.self, r.selfGene)
 			go func() {
 				atomic.StoreInt32(&r.state, notDailed)
 				r.tryDial()
@@ -80,9 +82,8 @@ func (r *Client) tryDial() {
 	r.conn = nil
 	conn, err := r.dialFunc()
 	if err != nil {
-		atomic.StoreInt32(&r.state, dailFailed)
 		mlog.L.Debugf("Client %v-%v try dial failed %v", r.self, r.selfGene, err)
-		r.retryDail(s, retryInterval)
+		r.retryDial(s, retryInterval)
 		return
 	}
 	atomic.StoreInt32(&r.state, dailed)
@@ -93,14 +94,19 @@ func (r *Client) tryDial() {
 		mlog.L.Infof("Client %v-%v recv exit, %+v", r.self, r.selfGene, sConn.GetCurrentStat())
 		r.mu.Lock()
 		r.stat = stream.AddStat(r.stat, sConn.GetCurrentStat())
+		// no matter what status,
+		cur := atomic.LoadInt32(&r.state)
+		if cur >= waitHelloAck {
+			r.retryDial(cur, 0)
+		}
 		r.mu.Unlock()
 	}()
 	r.conn = sConn
 	_, err = r.conn.Send(ConstructHello(r.self, r.selfGene))
 	if err != nil {
 		r.conn.Stop()
-		mlog.L.Debugf("Client %v-%v try dial hello failed %v", r.self, r.selfGene, err)
-		r.retryDail(dailed, retryInterval)
+		mlog.L.Debugf("Client %v-%v try dial hello failed %v. Stop connection", r.self, r.selfGene, err)
+		r.retryDial(dailed, retryInterval)
 		return
 	}
 	atomic.StoreInt32(&r.state, waitHelloAck)
@@ -146,7 +152,8 @@ func (r *Client) recv(c *stream.Conn, pack stream.Packet) {
 
 // dest is the identity for the destination component
 func (r *Client) Request(m Message) error {
-	if atomic.LoadInt32(&r.state) != connected {
+	s := atomic.LoadInt32(&r.state)
+	if s != connected {
 		return errConn
 	}
 	r.mu.RLock()
@@ -161,8 +168,7 @@ func (r *Client) Request(m Message) error {
 	r.mu.RUnlock()
 	if err != nil {
 		r.conn.Stop()
-		mlog.L.Debugf("Client %v-%v request ptype %v head %v failed, %v", r.self, r.selfGene, m.PayloadType, h, err)
-		r.retryDail(connected, 0)
+		mlog.L.Debugf("Client %v-%v request ptype %v head %v failed, %v. Stop connection", r.self, r.selfGene, m.PayloadType, h, err)
 	}
 	return err
 }
