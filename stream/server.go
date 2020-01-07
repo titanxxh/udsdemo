@@ -1,11 +1,12 @@
 package stream
 
 import (
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"xuxinhao.com/pbsocket/mlog"
 )
 
 type Server struct {
@@ -20,7 +21,7 @@ type Server struct {
 
 func (s *Server) handleConn(conn net.Conn) {
 	myc := NewConn(conn, s.cb, s.pr)
-	log.Printf("accept conn: %p", myc)
+	mlog.L.Debugf("accept conn: %p", myc)
 	s.l.Lock()
 	s.conns[myc] = struct{}{}
 	s.l.Unlock()
@@ -30,7 +31,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		delete(s.conns, myc)
 		s.l.Unlock()
 		s.wg.Done()
-		log.Printf("exit conn: %p", myc)
+		mlog.L.Debugf("exit conn: %p", myc)
 	}()
 	myc.RecvLoop()
 }
@@ -47,7 +48,7 @@ func (s *Server) Serve(l net.Listener) {
 			// todo if tcp listener, copy the implementation from grpc/server.go
 			// detect network Temporary() error, backoff accept time.
 			time.Sleep(time.Millisecond * 100)
-			log.Printf("accept error: %v", err)
+			mlog.L.Debugf("accept error: %v", err)
 			continue
 		}
 		go s.handleConn(fd)
@@ -60,7 +61,7 @@ func (s *Server) isRunning() bool {
 
 func (s *Server) GracefulStop() {
 	s.stop.Do(func() {
-		log.Printf("GracefulStop start")
+		mlog.L.Debugf("GracefulStop start")
 		atomic.StoreInt32(&s.state, stopped)
 		s.l.Lock()
 		for k := range s.conns {
@@ -68,7 +69,7 @@ func (s *Server) GracefulStop() {
 		}
 		s.l.Unlock()
 		s.wg.Wait()
-		log.Printf("GracefulStop end")
+		mlog.L.Debugf("GracefulStop end")
 	})
 }
 

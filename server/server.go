@@ -1,14 +1,13 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"xuxinhao.com/pbsocket/api/subpub"
+	"xuxinhao.com/pbsocket/mlog"
 	"xuxinhao.com/pbsocket/stream"
 )
 
@@ -17,17 +16,17 @@ func ackPack(c *stream.Conn, p stream.Packet) {
 	y := &subpub.ServerMessage{Header: x.GetHeader()}
 	_, err := c.Send(y)
 	if err != nil {
-		log.Printf("Server resp error: %v", err)
+		mlog.L.Info("Server resp error: %v", err)
 	}
-	fmt.Println("Server send:", y)
+	mlog.L.Info("Server send:", y)
 }
 
 func main() {
 	os.RemoveAll("/tmp/go.sock")
-	log.Println("Starting echo server")
+	mlog.L.Info("Starting echo server")
 	ln, err := net.Listen("unix", "/tmp/go.sock")
 	if err != nil {
-		log.Fatal("Listen error: ", err)
+		mlog.L.Fatal("Listen error: ", err)
 	}
 	server := stream.NewServer(ackPack, stream.Protobuf{})
 
@@ -36,7 +35,7 @@ func main() {
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func(ln net.Listener, c chan os.Signal) {
 		sig := <-c
-		log.Printf("Caught signal %s: shutting down.", sig)
+		mlog.L.Info("Caught signal %s: shutting down.", sig)
 		ln.Close()
 		server.GracefulStop()
 		done <- struct{}{}

@@ -1,8 +1,6 @@
 package stream
 
 import (
-	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -10,19 +8,20 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/grpc/test/bufconn"
 	"xuxinhao.com/pbsocket/api/subpub"
+	"xuxinhao.com/pbsocket/mlog"
 )
 
 func ackPack(c *Conn, p *subpub.UniMessage) {
 	y := &subpub.UniMessage{Header: p.GetHeader()}
 	_, err := c.Send(y)
 	if err != nil {
-		log.Printf("Server resp error: %v", err)
+		mlog.L.Infof("Server resp error: %v", err)
 	}
-	fmt.Println("Server send:", y)
+	mlog.L.Info("Server send:", y)
 }
 
 func recvPack(c *Conn, p *subpub.UniMessage) {
-	fmt.Println("Client recv:", proto.CompactTextString(p))
+	mlog.L.Info("Client recv:", proto.CompactTextString(p))
 }
 
 func TestConn_Send(t *testing.T) {
@@ -47,10 +46,20 @@ func TestConn_Send(t *testing.T) {
 		payload := make([]byte, 4096)
 		msg := &subpub.UniMessage{Header: &subpub.Header{Id: uint64(time.Now().UnixNano())}, Payload: payload}
 		cli.Send(msg)
-		So(<-noti, ShouldEqual, 1)
-		So(<-noti, ShouldEqual, 2)
+		x := 0
+		x |= 1 << (<-noti - 1)
+		x |= 1 << (<-noti - 1)
+		// client and server goroutines are parallel
+		So(x, ShouldEqual, 3)
 		cli.Stop()
 		lis.Close()
 		server.GracefulStop()
 	})
+}
+
+func TestXX_Manytimes(t *testing.T) {
+	for i := 0; i < 0; i++ {
+		mlog.L = mlog.L.WithField("times", i)
+		TestConn_Send(t)
+	}
 }

@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
+
+	"xuxinhao.com/pbsocket/mlog"
 )
 
 var (
@@ -63,7 +64,7 @@ func (c *Conn) Send(msg Packet) (int, error) {
 // RecvLoop will run until the connection is stopped or read an error.
 func (c *Conn) RecvLoop() {
 	defer func() {
-		log.Printf("Conn[%v] exit recv", c.c.RemoteAddr())
+		mlog.L.Debugf("Conn[%v] exit recv", c.c.RemoteAddr())
 	}()
 	tempBuf := make([]byte, RecvBufSize)
 	recvBuf := bytes.NewBuffer(make([]byte, 0, RecvBufSize))
@@ -72,9 +73,9 @@ func (c *Conn) RecvLoop() {
 		if err != nil {
 			if c.isRunning() {
 				if err != io.EOF {
-					log.Printf("Conn[%v] recv error cause stop: %v", c.c.RemoteAddr(), err)
+					mlog.L.Debugf("Conn[%v] recv error cause stop: %v", c.c.RemoteAddr(), err)
 				} else {
-					log.Printf("Conn[%v] recv io eof", c.c.RemoteAddr())
+					mlog.L.Debugf("Conn[%v] recv io eof", c.c.RemoteAddr())
 				}
 				c.Stop()
 			}
@@ -85,7 +86,7 @@ func (c *Conn) RecvLoop() {
 		for recvBuf.Len() > 0 {
 			msg, upl, err := c.pr.Unpack(recvBuf.Bytes())
 			if err != nil {
-				log.Printf("Conn[%v] unpack error: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
+				mlog.L.Debugf("Conn[%v] unpack error: %v, bytes: %v", c.c.RemoteAddr(), err, recvBuf.Bytes())
 			}
 			if upl > 0 {
 				_ = recvBuf.Next(upl)

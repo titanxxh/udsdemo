@@ -1,18 +1,17 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"net"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"xuxinhao.com/pbsocket/api/subpub"
+	"xuxinhao.com/pbsocket/mlog"
 	"xuxinhao.com/pbsocket/stream"
 )
 
 func recvPack(c *stream.Conn, p stream.Packet) {
-	fmt.Println("Client recv:", proto.CompactTextString(p.(*subpub.ServerMessage)))
+	mlog.L.Info("Client recv:", proto.CompactTextString(p.(*subpub.ServerMessage)))
 }
 
 func sendLoop(myc *stream.Conn, gracefulStop <-chan struct{}) {
@@ -22,17 +21,17 @@ func sendLoop(myc *stream.Conn, gracefulStop <-chan struct{}) {
 		select {
 		case <-gracefulStop:
 			myc.Stop()
-			fmt.Println("Client exit: final header", msg.Header)
+			mlog.L.Info("Client exit: final header", msg.Header)
 			return
 		default:
 			msg.Header.Generation++
 			_, err := myc.Send(msg)
 			if err != nil {
 				myc.Stop()
-				log.Fatal("Write error:", err)
+				mlog.L.Fatal("Write error:", err)
 				return
 			}
-			fmt.Println("Client sent:", msg.Header)
+			mlog.L.Info("Client sent:", msg.Header)
 		}
 	}
 }
@@ -40,7 +39,7 @@ func sendLoop(myc *stream.Conn, gracefulStop <-chan struct{}) {
 func main() {
 	c, err := net.Dial("unix", "/tmp/go.sock")
 	if err != nil {
-		log.Fatal("Dial error", err)
+		mlog.L.Fatal("Dial error", err)
 	}
 	defer c.Close()
 
