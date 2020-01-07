@@ -21,7 +21,7 @@ func sendLoop(myc *stream.Conn, gracefulStop <-chan struct{}) {
 		select {
 		case <-gracefulStop:
 			myc.Stop()
-			mlog.L.Info("Client exit: final header", msg.Header)
+			mlog.L.Infof("Client exit: final header %v", msg.Header)
 			return
 		default:
 			msg.Header.Generation++
@@ -49,4 +49,5 @@ func main() {
 	go sendLoop(myc, gracefulStop)
 	time.Sleep(time.Millisecond * 100)
 	close(gracefulStop)
+	mlog.L.Infof("stat: %+v", myc.GetCurrentStat())
 }

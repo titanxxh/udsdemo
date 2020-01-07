@@ -17,11 +17,22 @@ type Server struct {
 	state int32
 	cb    OnPackReceived
 	pr    Protocol
+	stat  Statistics
+}
+
+func (s *Server) GetCurrentStat() Statistics {
+	s.l.RLock()
+	t := s.stat
+	for k := range s.conns {
+		t = AddStat(t, k.GetCurrentStat())
+	}
+	s.l.RUnlock()
+	return t
 }
 
 func (s *Server) handleConn(conn net.Conn) {
 	myc := NewConn(conn, s.cb, s.pr)
-	mlog.L.Debugf("accept conn: %p", myc)
+	mlog.L.Infof("accept conn: %p", myc)
 	s.l.Lock()
 	s.conns[myc] = struct{}{}
 	s.l.Unlock()
@@ -29,9 +40,10 @@ func (s *Server) handleConn(conn net.Conn) {
 	defer func() {
 		s.l.Lock()
 		delete(s.conns, myc)
+		s.stat = AddStat(s.stat, myc.stat)
 		s.l.Unlock()
 		s.wg.Done()
-		mlog.L.Debugf("exit conn: %p", myc)
+		mlog.L.Infof("exit conn: %p, stat: %+v", myc, myc.stat)
 	}()
 	myc.RecvLoop()
 }
@@ -61,7 +73,7 @@ func (s *Server) isRunning() bool {
 
 func (s *Server) GracefulStop() {
 	s.stop.Do(func() {
-		mlog.L.Debugf("GracefulStop start")
+		mlog.L.Infof("GracefulStop start")
 		atomic.StoreInt32(&s.state, stopped)
 		s.l.Lock()
 		for k := range s.conns {
@@ -69,7 +81,7 @@ func (s *Server) GracefulStop() {
 		}
 		s.l.Unlock()
 		s.wg.Wait()
-		mlog.L.Debugf("GracefulStop end")
+		mlog.L.Infof("GracefulStop end, %+v", s.stat)
 	})
 }
 

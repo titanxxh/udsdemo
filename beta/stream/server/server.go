@@ -42,4 +42,5 @@ func main() {
 	}(ln, sigc)
 	go server.Serve(ln)
 	<-done
+	mlog.L.Infof("stat: %+v", server.GetCurrentStat())
 }

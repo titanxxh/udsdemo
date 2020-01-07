@@ -66,6 +66,13 @@ type (
 	}
 )
 
+func (s *Server) GetCurrentStat() stream.Statistics {
+	s.mu.RLock()
+	t := s.s.GetCurrentStat()
+	s.mu.RUnlock()
+	return t
+}
+
 func (s *Server) hello(peer peerInfo) {
 	s.mu.Lock()
 	old, ok := s.peers[peer.id]

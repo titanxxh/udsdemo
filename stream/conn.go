@@ -32,6 +32,14 @@ type Conn struct {
 	stop    sync.Once
 	l       sync.Mutex
 	pr      Protocol
+	stat    Statistics
+}
+
+func (c *Conn) GetCurrentStat() Statistics {
+	c.l.Lock()
+	t := c.stat
+	c.l.Unlock()
+	return t
 }
 
 func (c *Conn) isStopped() bool {
@@ -57,6 +65,12 @@ func (c *Conn) Send(msg Packet) (int, error) {
 	}
 	c.l.Lock()
 	n, err := c.pr.PackInto(msg, c.c)
+	c.stat.ByteSend += uint64(n)
+	if err != nil {
+		c.stat.PacketSendErr++
+	} else {
+		c.stat.PacketSend++
+	}
 	c.l.Unlock()
 	return n, err
 }
@@ -91,9 +105,12 @@ func (c *Conn) RecvLoop() {
 			if upl > 0 {
 				_ = recvBuf.Next(upl)
 			}
+			c.stat.ByteRecv += uint64(upl)
 			if msg != nil {
 				c.handler(c, msg)
+				c.stat.PacketRecv++
 			} else {
+				c.stat.PacketRecvErr++
 				break
 			}
 		}

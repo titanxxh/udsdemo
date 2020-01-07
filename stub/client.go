@@ -39,6 +39,15 @@ type Client struct {
 	conn     *stream.Conn
 	cbs      map[Identity]Handler
 	state    connState
+	stat     stream.Statistics
+}
+
+func (r *Client) GetCurrentStat() stream.Statistics {
+	r.mu.RLock()
+	t := r.stat
+	r.mu.RUnlock()
+	t = stream.AddStat(t, r.conn.GetCurrentStat())
+	return t
 }
 
 func (r *Client) retryDail(old connState, wait time.Duration) {
@@ -77,9 +86,12 @@ func (r *Client) tryDial() {
 	atomic.StoreInt32(&r.state, dailed)
 	sConn := stream.NewConn(conn, r.recv, stream.Simple{})
 	go func() {
-		mlog.L.Debugf("Client %v-%v recv start", r.self, r.selfGene)
+		mlog.L.Infof("Client %v-%v recv start", r.self, r.selfGene)
 		sConn.RecvLoop()
-		mlog.L.Debugf("Client %v-%v recv exit", r.self, r.selfGene)
+		mlog.L.Infof("Client %v-%v recv exit, %+v", r.self, r.selfGene, sConn.GetCurrentStat())
+		r.mu.Lock()
+		r.stat = stream.AddStat(r.stat, sConn.GetCurrentStat())
+		r.mu.Unlock()
 	}()
 	r.conn = sConn
 	_, err = r.conn.Send(ConstructHello(r.self, r.selfGene))

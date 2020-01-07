@@ -14,5 +14,5 @@ var L = logrus.NewEntry(&logrus.Logger{
 		TimestampFormat: time.RFC3339Nano,
 	},
 	Hooks: make(logrus.LevelHooks),
-	Level: logrus.DebugLevel,
+	Level: logrus.InfoLevel,
 })
