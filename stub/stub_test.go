@@ -8,8 +8,29 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"xuxinhao.com/pbsocket/beta/stub/itf"
 	"xuxinhao.com/pbsocket/mlog"
+)
+
+const (
+	TestAgentIden = 1
+
+	TestSubReqType    = 1
+	TestSubRspType    = 2
+	TestNormalReqType = 3
+	TestNormalRspType = 4
+)
+
+var (
+	SubReq = Message{
+		From:        TestAgentIden,
+		To:          TestAgentIden,
+		PayloadType: TestSubReqType,
+	}
+	SubRsp = Message{
+		From:        TestAgentIden,
+		To:          TestAgentIden,
+		PayloadType: TestSubRspType,
+	}
 )
 
 type serverCb struct {
@@ -18,7 +39,7 @@ type serverCb struct {
 
 func (s *serverCb) OnPayloadRecv(remote PeerID, msg Message) {
 	mlog.L.Infof("server recv from %v, %+v", remote, msg)
-	err := s.rsp.Response(remote, itf.SubRsp)
+	err := s.rsp.Response(remote, SubRsp)
 	mlog.L.Info("server reply result: ", err)
 }
 
@@ -34,7 +55,7 @@ func (c *clientCb) OnPayloadRecv(remote PeerID, msg Message) {
 }
 
 func (c *clientCb) OnPeerReconnect(id PeerID) {
-	err := c.req.Request(itf.SubReq)
+	err := c.req.Request(SubReq)
 	mlog.L.Info("client resub result: ", err)
 }
 
@@ -61,13 +82,13 @@ func TestStub(t *testing.T) {
 		scb, ccb := &serverCb{rsp: server}, &clientCb{req: client}
 		server.RegisterCallback(1, scb)
 		client.RegisterCallback(1, ccb)
-		client.Request(itf.SubReq)
+		client.Request(SubReq)
 		mlog.L.Info("client sub result: ", err)
 		time.Sleep(time.Second)
 
 		// for connection lost then send request cause re-dial again
 		client.conn.Stop()
-		So(client.Request(itf.SubReq), ShouldBeError)
+		So(client.Request(SubReq), ShouldBeError)
 		time.Sleep(time.Second)
 	})
 }

@@ -15,7 +15,8 @@ import (
 var (
 	errConn = fmt.Errorf("connection lost, please retry later")
 
-	retryInterval = time.Second
+	retryInterval  = time.Second
+	waitAckMaxTime = time.Millisecond * 500
 )
 
 type (
@@ -24,10 +25,7 @@ type (
 )
 
 const (
-	notDailed connState = iota
-	dailFailed
-	dailed
-	waitHelloAck
+	notConnected connState = iota
 	connected
 )
 
@@ -40,6 +38,7 @@ type Client struct {
 	cbs      map[Identity]Handler
 	state    connState
 	stat     stream.Statistics
+	ctrlChan chan connState
 }
 
 func (r *Client) GetCurrentStat() stream.Statistics {
@@ -52,77 +51,91 @@ func (r *Client) GetCurrentStat() stream.Statistics {
 	return t
 }
 
-func (r *Client) retryDial(old connState, wait time.Duration) {
-	sw := atomic.CompareAndSwapInt32(&r.state, old, dailFailed)
-	if sw {
-		if wait > 0 {
-			mlog.L.Infof("Client %v-%v retry dial later", r.self, r.selfGene)
-			time.AfterFunc(wait, func() {
-				atomic.StoreInt32(&r.state, notDailed)
-				r.tryDial()
-			})
-		} else {
-			mlog.L.Infof("Client %v-%v immediately retry dial", r.self, r.selfGene)
-			go func() {
-				atomic.StoreInt32(&r.state, notDailed)
-				r.tryDial()
-			}()
-		}
+func (r *Client) retryDial(wait time.Duration) {
+	atomic.StoreInt32(&r.state, notConnected)
+	if wait > 0 {
+		mlog.L.Infof("Client %v-%v retry dial later", r.self, r.selfGene)
+		time.AfterFunc(wait, r.tryDial)
+	} else {
+		mlog.L.Infof("Client %v-%v immediately retry dial", r.self, r.selfGene)
+		go r.tryDial()
 	}
 }
 
 func (r *Client) tryDial() {
-	mlog.L.Debugf("Client %v-%v try dial", r.self, r.selfGene)
-	s := atomic.LoadInt32(&r.state)
-	if s != notDailed {
-		return
+	d, ok := r.dial()
+	if !ok {
+		r.retryDial(d)
+	}
+}
+
+func (r *Client) dial() (time.Duration, bool) {
+	mlog.L.Debugf("Client %v-%v dial", r.self, r.selfGene)
+	if atomic.LoadInt32(&r.state) != notConnected {
+		return 0, true
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.conn = nil
 	conn, err := r.dialFunc()
 	if err != nil {
-		mlog.L.Debugf("Client %v-%v try dial failed %v", r.self, r.selfGene, err)
-		r.retryDial(s, retryInterval)
-		return
+		r.mu.Unlock()
+		mlog.L.Debugf("Client %v-%v dial failed %v", r.self, r.selfGene, err)
+		return retryInterval, false
 	}
-	atomic.StoreInt32(&r.state, dailed)
 	sConn := stream.NewConn(conn, r.recv, stream.Simple{})
+	r.conn = sConn
+	r.mu.Unlock()
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, err = r.conn.Send(ConstructHello(r.self, r.selfGene))
+	if err != nil {
+		r.conn.Stop()
+		mlog.L.Debugf("Client %v-%v dial hello failed %v. Stop connection", r.self, r.selfGene, err)
+		return retryInterval, false
+	}
 	go func() {
 		mlog.L.Infof("Client %v-%v recv start", r.self, r.selfGene)
 		sConn.RecvLoop()
 		mlog.L.Infof("Client %v-%v recv exit, %+v", r.self, r.selfGene, sConn.GetCurrentStat())
 		r.mu.Lock()
 		r.stat = stream.AddStat(r.stat, sConn.GetCurrentStat())
-		// no matter what status,
-		cur := atomic.LoadInt32(&r.state)
-		if cur >= waitHelloAck {
-			r.retryDial(cur, 0)
+		// if exit loop from connected, means hello ack is received, retry immediately
+		// otherwise, retry later
+		if atomic.LoadInt32(&r.state) == connected {
+			r.retryDial(0)
+		} else {
+			r.retryDial(retryInterval)
 		}
 		r.mu.Unlock()
 	}()
-	r.conn = sConn
-	_, err = r.conn.Send(ConstructHello(r.self, r.selfGene))
-	if err != nil {
+	wa := time.NewTimer(waitAckMaxTime)
+	select {
+	case <-wa.C:
 		r.conn.Stop()
-		mlog.L.Debugf("Client %v-%v try dial hello failed %v. Stop connection", r.self, r.selfGene, err)
-		r.retryDial(dailed, retryInterval)
-		return
+		mlog.L.Infof("Client %v-%v dial wait hello ack timeout. Stop connection", r.self, r.selfGene)
+	case <-r.ctrlChan:
+		wa.Stop()
+		return 0, true
 	}
-	atomic.StoreInt32(&r.state, waitHelloAck)
+	return retryInterval, false
 }
 
 func (r *Client) internal(peer peerInfo, t int32, buf []byte) {
 	switch t {
 	case HelloAck:
-		sw := atomic.CompareAndSwapInt32(&r.state, waitHelloAck, connected)
-		if sw {
-			mlog.L.Debugf("Client %v-%v change to connected", r.self, r.selfGene)
+		if atomic.CompareAndSwapInt32(&r.state, notConnected, connected) {
+			mlog.L.Infof("Client %v-%v change to connected", r.self, r.selfGene)
 			r.mu.RLock()
 			for _, cb := range r.cbs {
 				cb.OnPeerReconnect(peer.id)
 			}
 			r.mu.RUnlock()
+			select {
+			case r.ctrlChan <- connected:
+				mlog.L.Infof("Client %v-%v notify hello ack.", r.self, r.selfGene)
+			default:
+			}
 		}
 	case GoodbyeAck:
 	}
@@ -152,8 +165,7 @@ func (r *Client) recv(c *stream.Conn, pack stream.Packet) {
 
 // dest is the identity for the destination component
 func (r *Client) Request(m Message) error {
-	s := atomic.LoadInt32(&r.state)
-	if s != connected {
+	if atomic.LoadInt32(&r.state) != connected {
 		return errConn
 	}
 	r.mu.RLock()
@@ -165,11 +177,11 @@ func (r *Client) Request(m Message) error {
 		Header:      h,
 		PayloadType: m.PayloadType, Payload: m.Payload,
 	})
-	r.mu.RUnlock()
 	if err != nil {
 		r.conn.Stop()
 		mlog.L.Debugf("Client %v-%v request ptype %v head %v failed, %v. Stop connection", r.self, r.selfGene, m.PayloadType, h, err)
 	}
+	r.mu.RUnlock()
 	return err
 }
 
@@ -186,6 +198,7 @@ func NewClient(dialFunc DialFunc, self PeerID, selfGene Gene) *Client {
 		cbs:      make(map[Identity]Handler),
 		self:     self,
 		selfGene: selfGene,
+		ctrlChan: make(chan connState, 1),
 	}
 	l.tryDial()
 	return l
